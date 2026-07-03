@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Pereval</title>
+</head>
+<body>
+    <h1>Добро пожаловать на API Pereval</h1>
+    <p>Вы можете использовать следующие маршруты:</p>
+    <ul>
+        <li><a href="{% url 'schema-swagger-ui' %}">Swagger UI</a> - документация API.</li>
+        <li><a href="{% url 'schema-redoc' %}">Redoc</a> - альтернативная документация.</li>
+        <li><a href="{% url 'submit_data' %}">Отправка данных перевала</a> - отправить данные о перевале.</li>
+        <li><a href="{% url 'pereval_detail_update' id=1 %}">Просмотр перевала по ID</a> - просмотр и редактирование данных перевала по ID.</li>
+    </ul>
+
+    <h2>Поиск перевалов по email</h2>
+    <form action="{% url 'submit_data_by_email' %}" method="get">
+        <label for="email">Введите email:</label>
+        <input type="email" id="email" name="user__email" required>
+        <button type="submit">Поиск</button>
+    </form>
+</body>
+</html>
