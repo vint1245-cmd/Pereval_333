@@ -1,137 +1,125 @@
-from django.shortcuts import render
-from rest_framework import status
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.generics import CreateAPIView, ListAPIView, RetrieveUpdateAPIView
-from rest_framework.views import APIView
-
+from rest_framework.exceptions import NotFound, ValidationError
 from .models import PerevalAdded
 from .serializers import PerevalAddedSerializer, PerevalDetailSerializer
 
 
-# Обработка POST-запроса для создания записи
-class PerevalCreateView(CreateAPIView):
-    serializer_class = PerevalAddedSerializer
+class PerevalAddedViewSet(viewsets.ModelViewSet):
+    queryset = PerevalAdded.objects.all()
+    http_method_names = ['get', 'post', 'patch', 'head', 'options']
 
-    def post(self, request, *args, **kwargs):
-        serializer = PerevalAddedSerializer(data=request.data)
-        if serializer.is_valid():
-            try:
-                pereval_added = serializer.save()
-                return Response({
-                    "status": 200,
-                    "message": "успех",
-                    "id": pereval_added.id
-                }, status=status.HTTP_200_OK)
-            except Exception as e:
-                return Response({
-                    "status": 500,
-                    "message": f"Ошибка при выполнении операции: {str(e)}",
-                    "id": None
-                }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        else:
-            return Response({
-                "status": 400,
-                "message": "Bad Request (не корректные данные)",
-                "errors": serializer.errors,  # Отслеживаем ошибки сериализатора
-                "id": None
-            }, status=status.HTTP_400_BAD_REQUEST)
+    def get_serializer_class(self):
+        """
+        Используем разные сериализаторы для разных действий:
+        - Detail и Status используют PerevalDetailSerializer (read-only)
+        - Create и Update используют PerevalAddedSerializer
+        """
+        if self.action in ['retrieve', 'status', 'my_submits']:
+            return PerevalDetailSerializer
+        return PerevalAddedSerializer
 
-
-# Обработка GET и PATCH-запросов для получения и редактирования записи
-class PerevalDetailUpdateView(RetrieveUpdateAPIView):
-    serializer_class = PerevalAddedSerializer
-    lookup_field = 'id'     # Указываем правильное поле для поиска, т.к. по умолчанию lookup_field является pk
-
-    def get_queryset(self):
-        # Получаем id из URL параметров
-        pereval_id = self.kwargs.get('id')
-
-        # Если id передан, фильтруем по нему, иначе возвращаем все объекты
-        if pereval_id:
-            return PerevalAdded.objects.filter(id=pereval_id)
-        return PerevalAdded.objects.all()
-
-    def get_object(self):
-        # Переопределяем get_object, чтобы управлять поведением, когда объект не найден
-        queryset = self.get_queryset()
-        filter_kwargs = {self.lookup_field: self.kwargs[self.lookup_field]}
-        try:
-            return queryset.get(**filter_kwargs)
-        except PerevalAdded.DoesNotExist:
-            return None
-
-    def get(self, request, *args, **kwargs):
-        pereval = self.get_object()  # Используем наш переопределенный метод
-        if pereval is None:
-            return Response({
-                "status": 404,
-                "message": "Перевал не найден.",
-                "data": None
-            }, status=status.HTTP_404_NOT_FOUND)
-
-        serializer = PerevalDetailSerializer(pereval)  # Используем другой сериализатор для GET запроса
-        return Response({
-            "status": 200,
-            "message": "успех",
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
-
-    def patch(self, request, *args, **kwargs):
-        pereval = self.get_object()
-        if pereval is None:  # Проверка, существует ли объект для PATCH
-            return Response({
-                "status": 404,
-                "message": "Перевал не найден.",
-                "data": None
-            }, status=status.HTTP_404_NOT_FOUND)
-
-        # Проверяем статус
-        if pereval.status != 'new':
-            return Response({
-                "state": 0,
-                "message": "Редактирование доступно только для записей со статусом 'new'."
-            }, status=status.HTTP_400_BAD_REQUEST)
-
-        # Получаем сериализатор с данными запроса
-        serializer = self.get_serializer(pereval, data=request.data, partial=True)
+    def partial_update(self, request, *args, **kwargs):
+        """
+        PATCH: Редактирование перевала
+        Проверяем статус перед редактированием
+        """
+        instance = self.get_object()
+        
+        # Проверка статуса
+        if instance.status != 'new':
+            return Response(
+                {
+                    'message': 'Редактирование возможно только для объектов со статусом "new".',
+                    'current_status': instance.status,
+                    'id': instance.id
+                },
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
+        
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK
+        )
 
+    @action(detail=True, methods=['get'])
+    def status(self, request, pk=None):
+        """
+        GET /api/v1/submitData/{id}/status/
+        
+        Возвращает статус модерации конкретного перевала
+        """
+        try:
+            obj = self.get_object()
+        except PerevalAdded.DoesNotExist:
+            raise NotFound(
+                detail={
+                    'message': 'Объект с указанным ID не найден.'
+                }
+            )
+        
+        serializer = self.get_serializer(obj)
         return Response({
-            "state": 1,
-            "message": "Запись успешно отредактирована."
-        }, status=status.HTTP_200_OK)
+            'id': obj.id,
+            'status': obj.status,
+            'title': obj.title,
+            'beauty_title': obj.beauty_title,
+            'add_time': obj.add_time,
+            'user_email': obj.user.email
+        })
 
-
-# Обработка GET-запроса для получения записи (в данном случае по email)
-class PerevalListByEmailView(ListAPIView):
-    serializer_class = PerevalDetailSerializer
-
-    def get_queryset(self):
-        email = self.request.query_params.get('user__email', None)  # Получаем email из параметров запроса
-        if email:
-            return PerevalAdded.objects.filter(user__email=email)
-        return PerevalAdded.objects.none()  # Возвращаем пустой queryset, если email не указан
-
-    def get(self, request, *args, **kwargs):
-        queryset = self.get_queryset()
-
-        # Проверяем, найден ли хотя бы один объект
+    @action(detail=False, methods=['get'])
+    def my_submits(self, request):
+        """
+        GET /api/v1/submitData/my_submits/?user__email=example@mail.com
+        
+        Возвращает все перевалы, отправленные пользователем, со статусами модерации
+        """
+        email = request.query_params.get('user__email')
+        
+        if not email:
+            return Response(
+                {
+                    'message': 'Параметр "user__email" обязателен.',
+                    'example': '/api/v1/submitData/my_submits/?user__email=tourist@example.com'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Получаем все перевалы пользователя, отсортированные по времени (новые первыми)
+        queryset = self.get_queryset().filter(
+            user__email=email
+        ).order_by('-add_time')
+        
         if not queryset.exists():
-            return Response({
-                "status": 404,
-                "message": "Email не найден или записи отсутствуют",
-                "data": []
-            }, status=status.HTTP_404_NOT_FOUND)
-
+            return Response(
+                {
+                    'message': 'Перевалы для указанного email не найдены.',
+                    'email': email,
+                    'count': 0,
+                    'results': []
+                },
+                status=status.HTTP_200_OK
+            )
+        
         serializer = self.get_serializer(queryset, many=True)
+        
+        # Возвращаем сводную информацию по статусам
+        status_counts = {
+            'new': queryset.filter(status='new').count(),
+            'pending': queryset.filter(status='pending').count(),
+            'accepted': queryset.filter(status='accepted').count(),
+            'rejected': queryset.filter(status='rejected').count(),
+        }
+        
         return Response({
-            "status": 200,
-            "message": "успех",
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
-
-
-# Главная страница
-def index(request):
-    return render(request, 'index.html')
+            'count': queryset.count(),
+            'email': email,
+            'status_summary': status_counts,
+            'results': serializer.data
+        })
