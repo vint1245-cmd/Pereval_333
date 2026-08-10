@@ -1,12 +1,11 @@
 # app/routers/submitdata.py
-from typing import List
-
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import List, Dict
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.services.submit_service import SubmitService
-from app.schemas.pereval import PerevalOut
+from app.schemas.pereval import PerevalOut, PerevalCreate
 
 router = APIRouter(prefix="/submitData", tags=["submitData"])
 
@@ -38,3 +37,40 @@ def get_submits_by_email(
     """
     results = service.get_perevals_by_user_email(user__email)
     return results
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+def post_submit(payload: PerevalCreate, service: SubmitService = Depends(get_service)) -> Dict:
+    """
+    POST /submitData
+    Возвращает строго {status, message, id}
+    """
+    try:
+        pereval = service.create_pereval(payload)
+    except Exception as e:
+        # Возвращаем формат ТЗ даже при ошибке
+        return {"status": "error", "message": f"creation failed: {str(e)}", "id": None}
+    return {"status": "ok", "message": "created", "id": pereval.id}
+
+
+@router.patch("/{pereval_id}")
+def patch_submit(pereval_id: int, payload: Dict[str, str], service: SubmitService = Depends(get_service)):
+    """
+    PATCH /submitData/{id}
+    Ожидается payload вида {"status": "<new_status>"}
+    Возвращает строго {state, message}
+    Обновление разрешено только если текущий status == "new"
+    """
+    new_status = payload.get("status")
+    if not new_status:
+        raise HTTPException(status_code=400, detail="status is required in payload")
+
+    obj = service.repo.get_by_id(pereval_id)
+    if not obj:
+        raise HTTPException(status_code=404, detail="Pereval not found")
+
+    if obj.status != "new":
+        raise HTTPException(status_code=409, detail="Only records with status 'new' can be updated")
+
+    updated = service.update_status(pereval_id, new_status)
+    return {"state": updated.status, "message": "status updated"}
