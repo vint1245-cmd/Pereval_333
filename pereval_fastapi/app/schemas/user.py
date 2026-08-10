@@ -1,12 +1,14 @@
+# app/schemas/user.py
+from typing import Optional
 from pydantic import BaseModel, EmailStr
 
 
 class UserBase(BaseModel):
     email: EmailStr
-    phone: str | None = None
+    phone: Optional[str] = None
     fam: str
     name: str
-    otc: str | None = None
+    otc: Optional[str] = None
 
 
 class UserCreate(UserBase):
@@ -17,4 +19,4 @@ class UserOut(UserBase):
     id: int
 
     class Config:
-        from_attributes = True
+        orm_mode = True
