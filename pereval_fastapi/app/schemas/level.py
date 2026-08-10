@@ -1,11 +1,13 @@
+# app/schemas/level.py
+from typing import Optional
 from pydantic import BaseModel
 
 
 class LevelBase(BaseModel):
-    winter: str | None = None
-    summer: str | None = None
-    autumn: str | None = None
-    spring: str | None = None
+    winter: Optional[str] = None
+    summer: Optional[str] = None
+    autumn: Optional[str] = None
+    spring: Optional[str] = None
 
 
 class LevelCreate(LevelBase):
@@ -16,4 +18,4 @@ class LevelOut(LevelBase):
     id: int
 
     class Config:
-        from_attributes = True
+        orm_mode = True
