@@ -1,5 +1,5 @@
 # app/repositories/submit_repository.py
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select
@@ -22,8 +22,7 @@ class SubmitRepository:
             )
             .where(models.Pereval.id == pereval_id)
         )
-        result = self.db.execute(stmt).scalars().first()
-        return result
+        return self.db.execute(stmt).scalars().first()
 
     def get_by_user_email(self, email: str) -> List[models.Pereval]:
         stmt = (
@@ -37,8 +36,7 @@ class SubmitRepository:
             )
             .where(models.User.email == email)
         )
-        result = self.db.execute(stmt).scalars().all()
-        return result
+        return self.db.execute(stmt).scalars().all()
 
     def create(self, pereval: models.Pereval) -> models.Pereval:
         self.db.add(pereval)
