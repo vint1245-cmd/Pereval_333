@@ -1,10 +1,10 @@
 from typing import Optional
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, Field
 import base64
 
 class ImageBase(BaseModel):
-    title: Optional[str] = None
-    data: str  # base64 string
+    title: Optional[str] = Field(None, example="Седловина", description="Подпись к изображению")
+    data: str = Field(..., example="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUA...", description="Изображение в base64, можно с префиксом data:...;base64,")
 
 class ImageCreate(ImageBase):
     @field_validator("data")

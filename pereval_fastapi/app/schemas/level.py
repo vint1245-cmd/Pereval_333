@@ -1,11 +1,11 @@
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 class LevelBase(BaseModel):
-    winter: Optional[str] = None
-    summer: Optional[str] = None
-    autumn: Optional[str] = None
-    spring: Optional[str] = None
+    winter: Optional[str] = Field(None, example="1A", description="Категория сложности зимой")
+    summer: Optional[str] = Field(None, example="1A", description="Категория сложности летом")
+    autumn: Optional[str] = Field(None, example="1A", description="Категория сложности осенью")
+    spring: Optional[str] = Field(None, example="1A", description="Категория сложности весной")
 
 class LevelCreate(LevelBase):
     pass
