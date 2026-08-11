@@ -1,7 +1,5 @@
-# app/schemas/user.py
 from typing import Optional
 from pydantic import BaseModel, EmailStr
-
 
 class UserBase(BaseModel):
     email: EmailStr
@@ -10,13 +8,10 @@ class UserBase(BaseModel):
     name: str
     otc: Optional[str] = None
 
-
 class UserCreate(UserBase):
     pass
-
 
 class UserOut(UserBase):
     id: int
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}

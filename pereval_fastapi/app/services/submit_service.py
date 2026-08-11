@@ -1,15 +1,12 @@
 # app/services/submit_service.py
+from __future__ import annotations
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLalchemyError
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.repositories.submit_repository import SubmitRepository
 from app import models
-from app.schemas.pereval import PerevalOut
-from app.schemas.user import UserCreate
-from app.schemas.coords import CoordsCreate
-from app.schemas.level import LevelCreate
-from app.schemas.image import ImageCreate
+from app.schemas.pereval import PerevalOut, PerevalCreate
 
 
 class SubmitService:
@@ -26,11 +23,14 @@ class SubmitService:
     def get_perevals_by_user_email(self, email: str) -> List[PerevalOut]:
         objs = self.repo.get_by_user_email(email)
         return [PerevalOut.from_orm(o) for o in objs]
-    
+
     def create_pereval(self, payload: PerevalCreate) -> models.Pereval:
-        # Создает перевал с вложенными user, coords, level, images
-        # если пользователь с таким email уже существует, то не создаем нового пользователя, а используем существующего
+        """
+        Создаёт Pereval и вложенные сущности.
+        Если пользователь с таким email уже есть — используем его.
+        """
         try:
+            # USER
             user_data = payload.user
             user = (
                 self.db.query(models.User)
@@ -48,7 +48,7 @@ class SubmitService:
                 self.db.add(user)
                 self.db.flush()
 
-        # Coords
+            # COORDS
             coords_data = payload.coords
             coords = models.Coords(
                 latitude=coords_data.latitude,
@@ -58,7 +58,7 @@ class SubmitService:
             self.db.add(coords)
             self.db.flush()
 
-        # Level
+            # LEVEL
             level_data = payload.level
             level = models.Level(
                 winter=level_data.winter,
@@ -69,7 +69,7 @@ class SubmitService:
             self.db.add(level)
             self.db.flush()
 
-        # Pereval
+            # PEREVAL
             pereval = models.Pereval(
                 beauty_title=payload.beauty_title,
                 title=payload.title,
@@ -83,37 +83,41 @@ class SubmitService:
             self.db.add(pereval)
             self.db.flush()
 
-        # Images
+            # IMAGES
             for img in payload.images:
-                image = models.Image(pereval_id=pereval.id, data=img.data, title=img.title)
+                image = models.Image(
+                    pereval_id=pereval.id,
+                    data=img.data,
+                    title=img.title,
+                )
                 self.db.add(image)
-        #commit transaction
+
+            # COMMIT
             self.db.commit()
-            
-        #refresh with relations
+
+            # REFRESH
             self.db.refresh(pereval)
             return pereval
-        
-        except SQLalchemyError as e:
+
+        except Exception:
             self.db.rollback()
             raise
-        except Exception as e:
-            self.db.rollback()
-            raise
-        
+
     def update_status(self, pereval_id: int, new_status: str) -> Optional[models.Pereval]:
-        #Обновляет статус перевала, если текущий статус == "new", иначе возвращает объект без изменений
+        """
+        Обновляет статус Pereval, только если текущий статус == "new".
+        """
         obj = self.repo.get_by_id(pereval_id)
         if not obj:
             return None
+
         if obj.status != "new":
-            #не обновляем статус, возвращаем объект без изменений
             return obj
+
         try:
             obj.status = new_status
             updated = self.repo.update(obj)
             return updated
-        except SQLalchemyError:
+        except SQLAlchemyError:
             self.db.rollback()
             raise
-        

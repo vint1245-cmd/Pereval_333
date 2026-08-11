@@ -1,11 +1,12 @@
 # app/routers/submitdata.py
-from typing import List, Dict
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.services.submit_service import SubmitService
 from app.schemas.pereval import PerevalOut, PerevalCreate
+from app.schemas.responses import SubmitResponse, SubmitPatchResponse
 
 router = APIRouter(prefix="/submitData", tags=["submitData"])
 
@@ -35,26 +36,24 @@ def get_submits_by_email(
     GET /submitData?user__email=<email>
     Возвращает список записей Pereval, связанных с пользователем с указанным email.
     """
-    results = service.get_perevals_by_user_email(user__email)
-    return results
+    return service.get_perevals_by_user_email(user__email)
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
-def post_submit(payload: PerevalCreate, service: SubmitService = Depends(get_service)) -> Dict:
+@router.post("", response_model=SubmitResponse, status_code=status.HTTP_201_CREATED)
+def post_submit(payload: PerevalCreate, service: SubmitService = Depends(get_service)):
     """
     POST /submitData
     Возвращает строго {status, message, id}
     """
     try:
         pereval = service.create_pereval(payload)
+        return SubmitResponse(status="ok", message="created", id=pereval.id)
     except Exception as e:
-        # Возвращаем формат ТЗ даже при ошибке
-        return {"status": "error", "message": f"creation failed: {str(e)}", "id": None}
-    return {"status": "ok", "message": "created", "id": pereval.id}
+        return SubmitResponse(status="error", message=f"creation failed: {e}", id=None)
 
 
-@router.patch("/{pereval_id}")
-def patch_submit(pereval_id: int, payload: Dict[str, str], service: SubmitService = Depends(get_service)):
+@router.patch("/{pereval_id}", response_model=SubmitPatchResponse)
+def patch_submit(pereval_id: int, payload: dict, service: SubmitService = Depends(get_service)):
     """
     PATCH /submitData/{id}
     Ожидается payload вида {"status": "<new_status>"}
@@ -73,4 +72,4 @@ def patch_submit(pereval_id: int, payload: Dict[str, str], service: SubmitServic
         raise HTTPException(status_code=409, detail="Only records with status 'new' can be updated")
 
     updated = service.update_status(pereval_id, new_status)
-    return {"state": updated.status, "message": "status updated"}
+    return SubmitPatchResponse(state=updated.status, message="status updated")
