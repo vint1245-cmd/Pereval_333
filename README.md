@@ -132,12 +132,5 @@ python -m pytest -q
 - Сервисная логика: [pereval_fastapi/app/services/submit_service.py](pereval_fastapi/app/services/submit_service.py)
 - Тесты: [pereval_fastapi/tests/test_submitdata.py](pereval_fastapi/tests/test_submitdata.py)
 
-**Вклад и развитие**
-- Для предложений и исправлений создавайте pull request или отправьте issue с описанием шага воспроизведения.
-
 **Лицензия**
 - Код проекта находится под свободной лицензией (уточните в репозитории при необходимости).
-
----
-
-Если хотите, могу сократить README до одностраничного QuickStart или сгенерировать OpenAPI-примеры для мобильной команды.
