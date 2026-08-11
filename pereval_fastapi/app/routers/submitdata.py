@@ -26,7 +26,7 @@ async def get_pereval(pereval_id: int, session: AsyncSession = Depends(get_sessi
 
 
 @router.get("")
-async def list_perevals(user__email: str, session: AsyncSession = Depends(get_session)):
+async def list_perevals(user__email: str | None = None, session: AsyncSession = Depends(get_session)):
     service = SubmitService(session)
     result = await service.list_by_user_email(user__email)
     return result

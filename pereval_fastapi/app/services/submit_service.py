@@ -109,8 +109,8 @@ class SubmitService:
             raise HTTPException(status_code=404, detail=f"Перевал с ID {pereval_id} не найден")
         return PerevalOut.model_validate(obj)
 
-    async def list_by_user_email(self, email: str):
-        q = (
+    async def list_by_user_email(self, email: str | None):
+        base_q = (
             select(Pereval)
             .options(
                 selectinload(Pereval.user),
@@ -118,10 +118,14 @@ class SubmitService:
                 selectinload(Pereval.level),
                 selectinload(Pereval.images),
             )
-            .join(User)
-            .where(User.email == email)
             .order_by(Pereval.add_time.desc())
         )
+
+        if email:
+            q = base_q.join(User).where(User.email == email)
+        else:
+            q = base_q
+
         res = await self.session.execute(q)
         objs = res.scalars().all()
         return [PerevalOut.model_validate(o) for o in objs]
