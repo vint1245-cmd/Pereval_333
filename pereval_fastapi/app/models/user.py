@@ -15,4 +15,8 @@ class User(Base):
     name = Column(String(100), nullable=False)
     otc = Column(String(100), nullable=True)
 
-    perevals = relationship("Pereval", back_populates="user", lazy="selectin")
+    perevals = relationship(
+        "Pereval",
+        back_populates="user",
+        lazy="selectin"
+    )

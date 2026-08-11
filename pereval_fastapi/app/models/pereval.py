@@ -1,5 +1,5 @@
 # app/models/pereval.py
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Text
 from sqlalchemy.orm import relationship
 
@@ -20,7 +20,7 @@ class Pereval(Base):
     level_id = Column(Integer, ForeignKey("levels.id"), nullable=False)
 
     status = Column(String(20), default="new", nullable=False)
-    add_time = Column(DateTime, default=datetime.utcnow, nullable=False)
+    add_time = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     # Связи. Используем back_populates для двунаправленной навигации
     user = relationship("User", back_populates="perevals")

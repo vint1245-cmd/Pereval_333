@@ -1,123 +1,217 @@
 # app/services/submit_service.py
-from __future__ import annotations
-from typing import List, Optional
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from fastapi import HTTPException
 
-from app.repositories.submit_repository import SubmitRepository
-from app import models
-from app.schemas.pereval import PerevalOut, PerevalCreate
+from app.models.user import User
+from app.models.coords import Coords
+from app.models.level import Level
+from app.models.image import Image
+from app.models.pereval import Pereval
+
+from app.schemas.pereval import PerevalCreate, PerevalOut, PerevalUpdate
 
 
 class SubmitService:
-    def __init__(self, db: Session):
-        self.repo = SubmitRepository(db)
-        self.db = db
+    def __init__(self, session: AsyncSession):
+        self.session = session
 
-    def get_pereval_by_id(self, pereval_id: int) -> Optional[PerevalOut]:
-        obj = self.repo.get_by_id(pereval_id)
-        if not obj:
-            return None
-        return PerevalOut.from_orm(obj)
+    async def create_pereval(self, data: PerevalCreate):
+        # USER
+        user_data = data.user
+        q = select(User).where(User.email == user_data.email)
+        res = await self.session.execute(q)
+        user = res.scalars().first()
 
-    def get_perevals_by_user_email(self, email: str) -> List[PerevalOut]:
-        objs = self.repo.get_by_user_email(email)
-        return [PerevalOut.from_orm(o) for o in objs]
+        if not user:
+            user = User(
+                email=user_data.email,
+                fam=user_data.fam,
+                name=user_data.name,
+                otc=user_data.otc,
+                phone=user_data.phone
+            )
+            self.session.add(user)
+            await self.session.flush()
 
-    def create_pereval(self, payload: PerevalCreate) -> models.Pereval:
-        """
-        Создаёт Pereval и вложенные сущности.
-        Если пользователь с таким email уже есть — используем его.
-        """
+        # COORDS
+        coords_data = data.coords
+        coords = Coords(
+            latitude=coords_data.latitude,
+            longitude=coords_data.longitude,
+            height=coords_data.height
+        )
+        self.session.add(coords)
+        await self.session.flush()
+
+        # LEVEL
+        level_data = data.level
+        level = Level(
+            winter=level_data.winter,
+            summer=level_data.summer,
+            autumn=level_data.autumn,
+            spring=level_data.spring,
+        )
+        self.session.add(level)
+        await self.session.flush()
+
+        # PEREVAL
+        pereval_data = {
+            "beauty_title": data.beauty_title,
+            "title": data.title,
+            "other_titles": data.other_titles,
+            "connect": data.connect,
+            "user_id": user.id,
+            "coords_id": coords.id,
+            "level_id": level.id,
+            "status": "new",
+        }
+        if data.add_time is not None:
+            pereval_data["add_time"] = data.add_time
+
+        pereval = Pereval(**pereval_data)
+        self.session.add(pereval)
+        await self.session.flush()
+
+        # IMAGES
+        for img in data.images:
+            image = Image(
+                pereval_id=pereval.id,
+                title=img.title,
+                data=img.data
+            )
+            self.session.add(image)
+
         try:
-            # USER
-            user_data = payload.user
-            user = (
-                self.db.query(models.User)
-                .filter(models.User.email == user_data.email)
-                .first()
-            )
-            if not user:
-                user = models.User(
-                    email=user_data.email,
-                    phone=user_data.phone,
-                    fam=user_data.fam,
-                    name=user_data.name,
-                    otc=user_data.otc,
-                )
-                self.db.add(user)
-                self.db.flush()
-
-            # COORDS
-            coords_data = payload.coords
-            coords = models.Coords(
-                latitude=coords_data.latitude,
-                longitude=coords_data.longitude,
-                height=coords_data.height,
-            )
-            self.db.add(coords)
-            self.db.flush()
-
-            # LEVEL
-            level_data = payload.level
-            level = models.Level(
-                winter=level_data.winter,
-                summer=level_data.summer,
-                autumn=level_data.autumn,
-                spring=level_data.spring,
-            )
-            self.db.add(level)
-            self.db.flush()
-
-            # PEREVAL
-            pereval = models.Pereval(
-                beauty_title=payload.beauty_title,
-                title=payload.title,
-                other_titles=payload.other_titles,
-                connect=payload.connect,
-                status="new",
-                user_id=user.id,
-                coords_id=coords.id,
-                level_id=level.id,
-            )
-            self.db.add(pereval)
-            self.db.flush()
-
-            # IMAGES
-            for img in payload.images:
-                image = models.Image(
-                    pereval_id=pereval.id,
-                    data=img.data,
-                    title=img.title,
-                )
-                self.db.add(image)
-
-            # COMMIT
-            self.db.commit()
-
-            # REFRESH
-            self.db.refresh(pereval)
-            return pereval
-
+            await self.session.commit()
+            await self.session.refresh(pereval)
         except Exception:
-            self.db.rollback()
+            await self.session.rollback()
             raise
 
-    def update_status(self, pereval_id: int, new_status: str) -> Optional[models.Pereval]:
-        """
-        Обновляет статус Pereval, только если текущий статус == "new".
-        """
-        obj = self.repo.get_by_id(pereval_id)
+        return {
+            "status": 200,
+            "message": None,
+            "id": pereval.id
+        }
+
+    async def get_pereval(self, pereval_id: int):
+        q = select(Pereval).options(
+            selectinload(Pereval.user),
+            selectinload(Pereval.coords),
+            selectinload(Pereval.level),
+            selectinload(Pereval.images),
+        ).where(Pereval.id == pereval_id)
+        res = await self.session.execute(q)
+        obj = res.scalars().first()
         if not obj:
-            return None
+            raise HTTPException(status_code=404, detail=f"Перевал с ID {pereval_id} не найден")
+        return PerevalOut.model_validate(obj)
+
+    async def list_by_user_email(self, email: str):
+        q = (
+            select(Pereval)
+            .options(
+                selectinload(Pereval.user),
+                selectinload(Pereval.coords),
+                selectinload(Pereval.level),
+                selectinload(Pereval.images),
+            )
+            .join(User)
+            .where(User.email == email)
+            .order_by(Pereval.add_time.desc())
+        )
+        res = await self.session.execute(q)
+        objs = res.scalars().all()
+        return [PerevalOut.model_validate(o) for o in objs]
+
+    async def update_status(self, pereval_id: int, new_status: str):
+        q = select(Pereval).where(Pereval.id == pereval_id)
+        res = await self.session.execute(q)
+        obj = res.scalars().first()
+
+        if not obj:
+            raise HTTPException(status_code=404, detail="Not found")
 
         if obj.status != "new":
-            return obj
+            raise HTTPException(status_code=409, detail="Only records with status 'new' can be updated")
 
+        obj.status = new_status
+        self.session.add(obj)
+        await self.session.commit()
+        await self.session.refresh(obj)
+
+        return {"state": new_status, "message": "status updated"}
+
+    async def update_pereval(self, pereval_id: int, data: PerevalUpdate):
+        q = select(Pereval).options(
+            selectinload(Pereval.coords),
+            selectinload(Pereval.level),
+            selectinload(Pereval.images),
+        ).where(Pereval.id == pereval_id)
+        res = await self.session.execute(q)
+        obj = res.scalars().first()
+
+        if not obj:
+            raise HTTPException(status_code=404, detail="Not found")
+
+        if obj.status != "new":
+            raise HTTPException(status_code=409, detail="Only records with status 'new' can be updated")
+
+        if data.user is not None:
+            if (
+                data.user.email != obj.user.email
+                or data.user.fam != obj.user.fam
+                or data.user.name != obj.user.name
+                or data.user.otc != obj.user.otc
+                or data.user.phone != obj.user.phone
+            ):
+                raise HTTPException(status_code=400, detail="User fields cannot be edited")
+
+        if data.beauty_title is not None:
+            obj.beauty_title = data.beauty_title
+        if data.title is not None:
+            obj.title = data.title
+        if data.other_titles is not None:
+            obj.other_titles = data.other_titles
+        if data.connect is not None:
+            obj.connect = data.connect
+        if data.add_time is not None:
+            obj.add_time = data.add_time
+
+        if data.coords is not None:
+            obj.coords.latitude = data.coords.latitude
+            obj.coords.longitude = data.coords.longitude
+            obj.coords.height = data.coords.height
+
+        if data.level is not None:
+            obj.level.winter = data.level.winter
+            obj.level.summer = data.level.summer
+            obj.level.autumn = data.level.autumn
+            obj.level.spring = data.level.spring
+
+        if data.images_to_delete:
+            delete_ids = set(data.images_to_delete)
+            for image in list(obj.images):
+                if image.id in delete_ids:
+                    await self.session.delete(image)
+
+        if data.images:
+            for image_data in data.images:
+                image = Image(
+                    pereval_id=obj.id,
+                    title=image_data.title,
+                    data=image_data.data,
+                )
+                self.session.add(image)
+
+        self.session.add(obj)
         try:
-            obj.status = new_status
-            updated = self.repo.update(obj)
-            return updated
-        except SQLAlchemyError:
-            self.db.rollback()
+            await self.session.commit()
+            await self.session.refresh(obj)
+        except Exception:
+            await self.session.rollback()
             raise
+
+        return {"state": 1, "message": "Запись успешно отредактирована"}
